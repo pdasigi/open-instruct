@@ -30,7 +30,8 @@ einops
 flash-attn==2.2.2
 auto-gptq
 fire
-alpaca-eval==0.5.3
+# Pradeep's fork of alpaca eval with bug fixes and better logging
+git+https://github.com/pdasigi/alpaca_eval.git
 # for human eval web app
 flask
 vllm 
