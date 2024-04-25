@@ -27,18 +27,18 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str, required=True)
     parser.add_argument("--dataset", type=str, default="gsm8k")
-    parser.add_argument("--max_new_tokens", type=int, default=8192)
-    parser.add_argument("--temperature", type=float, default=0.5)
+    parser.add_argument("--max_new_tokens", type=int, default=512)
+    parser.add_argument("--temperature", type=float, default=0.2)
     parser.add_argument("--use_chat_format", action="store_true")
     parser.add_argument("--num_completions", type=int, default=5)
     parser.add_argument("--output", type=str, required=True)
     args = parser.parse_args()
 
     if args.dataset == "gsm8k":
-        prompt_prefix = "Answer the following question.\n\n"
+        prompt_prefix = "Answer the following question.\n\nQuestion: " if args.use_chat_format else "Question: "
         prompt_suffix = " Answer:"
         dataset = load_dataset("gsm8k", "main", split="train")
-        raw_prompts = [prompt_prefix + d["question"] + prompt_suffix for d in dataset]
+        raw_prompts = [prompt_prefix + d["question"].strip() + prompt_suffix for d in dataset]
     else:
         raise NotImplementedError(f"Cannot handle dataset {args.dataset}")
 
@@ -63,6 +63,7 @@ def main():
         n=args.num_completions,
         temperature=args.temperature,
         max_tokens=args.max_new_tokens,
+        stop=["\n"] if not args.use_chat_format else None,
     )
 
 
