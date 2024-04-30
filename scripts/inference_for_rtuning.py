@@ -3,6 +3,7 @@ import argparse
 import torch
 import vllm
 from datasets import load_dataset
+from eval.truthfulqa.utilities import format_prompt
 
 
 def create_prompt_with_tulu_chat_format(messages, bos="<s>", eos="</s>", add_bos=True):
@@ -27,7 +28,6 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str, required=True)
     parser.add_argument("--dataset", type=str, default="gsm8k")
-    parser.add_argument("--max_new_tokens", type=int, default=512)
     parser.add_argument("--temperature", type=float, default=0.2)
     parser.add_argument("--use_chat_format", action="store_true")
     parser.add_argument("--num_completions", type=int, default=5)
@@ -39,6 +39,20 @@ def main():
         prompt_suffix = " Answer:"
         dataset = load_dataset("gsm8k", "main", split="train")
         raw_prompts = [prompt_prefix + d["question"].strip() + prompt_suffix for d in dataset]
+        stop_sequence = ["\n"]
+        max_new_tokens = 512
+    elif args.dataset == "truthful_qa":
+        dataset = load_dataset("truthful_qa", "generation", split="validation")
+        # Keeping it consistent with the logic in eval.truthful_qa.run_eval.run_hf_model
+        raw_prompts = [
+            format_prompt(d["question"], preset="qa", format="general") for d in dataset
+        ]
+        stop_sequence = ["\n\n"]
+        max_new_tokens = 50
+        if args.use_chat_format:
+            raw_prompts = [
+                prompt + "A:" if prompt[-1] in ["\n", " "] else " A:" for prompt in raw_prompts
+            ]
     else:
         raise NotImplementedError(f"Cannot handle dataset {args.dataset}")
 
@@ -62,8 +76,8 @@ def main():
     sampling_params = vllm.SamplingParams(
         n=args.num_completions,
         temperature=args.temperature,
-        max_tokens=args.max_new_tokens,
-        stop=["\n"] if not args.use_chat_format else None,
+        max_tokens=max_new_tokens,
+        stop=stop_sequence if not args.use_chat_format else None,
     )
 
 
