@@ -3,6 +3,10 @@ import argparse
 import torch
 import vllm
 from datasets import load_dataset
+
+import os
+import sys
+sys.path.insert(0, os.path.abspath(os.pardir))
 from eval.truthfulqa.utilities import format_prompt
 
 
