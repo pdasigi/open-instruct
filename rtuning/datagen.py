@@ -49,13 +49,13 @@ def main():
         dataset = load_dataset("truthful_qa", "generation", split="validation")
         # Keeping it consistent with the logic in eval.truthful_qa.run_eval.run_hf_model
         raw_prompts = [
-            format_prompt(d["question"], preset="qa", format="general") for d in dataset
+            format_prompt({"Question": d["question"]}, preset="qa", format="general") for d in dataset
         ]
         stop_sequence = ["\n\n"]
         max_new_tokens = 50
         if args.use_chat_format:
             raw_prompts = [
-                prompt + "A:" if prompt[-1] in ["\n", " "] else " A:" for prompt in raw_prompts
+                prompt + ("A:" if prompt[-1] in ["\n", " "] else " A:") for prompt in raw_prompts
             ]
     else:
         raise NotImplementedError(f"Cannot handle dataset {args.dataset}")
