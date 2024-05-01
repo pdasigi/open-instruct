@@ -1,13 +1,18 @@
+import re
 import json
 import argparse
 import torch
 import vllm
 from datasets import load_dataset
+import evaluate
 
 import os
 import sys
 sys.path.insert(0, os.path.abspath(os.pardir))
 from eval.truthfulqa.utilities import format_prompt
+
+
+exact_match = evaluate.load("exact_match")
 
 
 def create_prompt_with_tulu_chat_format(messages, bos="<s>", eos="</s>", add_bos=True):
@@ -28,6 +33,22 @@ def create_prompt_with_tulu_chat_format(messages, bos="<s>", eos="</s>", add_bos
     return formatted_text
 
 
+def estimate_confidence_gsm(target, completions):
+    predictions = []
+    for completion in completions:
+        # The following logic is from eval.gsm.run_eval.main 
+        # replace numbers like `x,xxx` with `xxxx`
+        output = re.sub(r"(\d),(\d)", r"\1\2", completion)
+        numbers = re.findall(r"[-+]?\d*\.\d+|\d+", output)
+        if numbers:
+            predictions.append(numbers[-1])
+        else:
+            predictions.append(output)
+    targets = [target] * len(predictions)
+    em_score = exact_match.compute(predictions=predictions, references=targets, ignore_case=True, ignore_punctuation=True)["exact_match"]
+    return em_score
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str, required=True)
@@ -43,6 +64,7 @@ def main():
         prompt_suffix = " Answer:"
         dataset = load_dataset("gsm8k", "main", split="train")
         raw_prompts = [prompt_prefix + d["question"].strip() + prompt_suffix for d in dataset]
+        targets = [d["answer"] for d in dataset]
         stop_sequence = ["\n"]
         max_new_tokens = 512
     elif args.dataset == "truthful_qa":
@@ -51,12 +73,14 @@ def main():
         raw_prompts = [
             format_prompt({"Question": d["question"]}, preset="qa", format="general") for d in dataset
         ]
-        stop_sequence = ["\n\n"]
-        max_new_tokens = 50
         if args.use_chat_format:
             raw_prompts = [
                 prompt + ("A:" if prompt[-1] in ["\n", " "] else " A:") for prompt in raw_prompts
             ]
+        # TODO: Implement evaluation logic for truthfulqa
+        targets = None
+        stop_sequence = ["\n\n"]
+        max_new_tokens = 50
     else:
         raise NotImplementedError(f"Cannot handle dataset {args.dataset}")
 
@@ -83,14 +107,32 @@ def main():
         max_tokens=max_new_tokens,
         stop=stop_sequence if not args.use_chat_format else None,
     )
+    sampled_outputs = model.generate(prompts, sampling_params)
+    sampled_completions = [[it.outputs[i].text for i in range(args.num_completions)] for it in sampled_outputs]
 
+    greedy_params = vllm.SamplingParams(
+        n=1,
+        temperature=0.0,
+        max_tokens=max_new_tokens,
+        stop=stop_sequence if not args.use_chat_format else None,
+    )
+    greedy_outputs = model.generate(prompts, greedy_params)
+    greedy_completions = [it.outputs[0].text for it in greedy_outputs]
 
-    outputs = model.generate(prompts, sampling_params)
-    completions = [[it.outputs[i].text for i in range(args.num_completions)] for it in outputs]
     with open(args.output, "w") as outfile:
-        for prompt, instance_completions in zip(raw_prompts, completions):
+        for prompt, target, samp_comps, greedy_comp in zip(raw_prompts, targets, sampled_completions, greedy_completions):
+            if args.dataset == "gsm8k":
+                confidence = estimate_confidence_gsm(target, samp_comps)
+            else:
+                raise NotImplementedError(f"Cannot handle dataset {args.dataset}")
             print(
-                json.dumps({"prompt": prompt, "completions": instance_completions}),
+                json.dumps(
+                    {
+                        "prompt": prompt,
+                        "sampled_completions": samp_comps,
+                        "greedy_completion": greedy_comp,
+                        "confidence": confidence,
+                    }),
                 file=outfile
             )
 
