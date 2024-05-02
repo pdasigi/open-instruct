@@ -5,12 +5,14 @@ import torch
 import vllm
 from datasets import load_dataset
 import evaluate
+import pandas as pd
 
 import os
 import sys
 sys.path.insert(0, os.path.abspath(os.pardir))
 from eval.truthfulqa.utilities import format_prompt
 from eval.truthfulqa.metrics import run_hf_classifier_eval
+from eval.utils import load_hf_lm_and_tokenizer
 
 
 exact_match = evaluate.load("exact_match")
@@ -51,6 +53,13 @@ def estimate_confidence_gsm(target, completions):
     return em_score
 
 
+def estimate_confidence_truthfulqa(pd_dataset, idx, num_completions):
+    truth_info_accuracies = []
+    for i in range(num_completions):
+        truth_info_accuracies.append(pd_dataset.loc[idx, f"sample_{i} truth-info acc"])
+    return sum(truth_info_accuracies) / num_completions
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str, required=True)
@@ -58,6 +67,8 @@ def main():
     parser.add_argument("--temperature", type=float, default=0.2)
     parser.add_argument("--use_chat_format", action="store_true")
     parser.add_argument("--num_completions", type=int, default=5)
+    parser.add_argument("--hf_truth_model", typ=str, default="allenai/truthfulqa-truth-judge-llama2-7B")
+    parser.add_argument("--hf_info_model", typ=str, default="allenai/truthfulqa-info-judge-llama2-7B")
     parser.add_argument("--output", type=str, required=True)
     args = parser.parse_args()
 
@@ -79,8 +90,6 @@ def main():
             raw_prompts = [
                 prompt + ("A:" if prompt[-1] in ["\n", " "] else " A:") for prompt in raw_prompts
             ]
-        # TODO: Implement evaluation logic for truthfulqa
-        targets = None
         stop_sequence = ["\n\n"]
         max_new_tokens = 50
     else:
@@ -121,12 +130,44 @@ def main():
     greedy_outputs = model.generate(prompts, greedy_params)
     greedy_completions = [it.outputs[0].text for it in greedy_outputs]
 
+    confidence_values = []
+    if args.dataset == "gsm8k":
+        for target, samp_comps in zip(targets, sampled_completions):
+            confidence_values.append(estimate_confidence_gsm(target, samp_comps))
+
+    elif args.dataset == "truthful_qa":
+        # Need to create a pandas dataframe for evaluating truthfulness and informativeness
+        pd_dataset = pd.DataFrame(dataset)
+        pd_dataset.rename(columns={"question": "Question"})
+        for idx, completions in  zip(pd_dataset.index, sampled_completions):
+            for i, completion in enumerate(completions):
+                pd_dataset.loc[idx, f"sample_{i}"] = completion 
+
+        print(f"Loading truth classifier from {args.hf_truth_model}")
+        truth_classifier, truth_tokenizer = load_hf_lm_and_tokenizer(
+            model_name_or_path=args.hf_truth_model, 
+            tokenizer_name_or_path=args.hf_truth_model,
+            device_map="balanced_low_0" if torch.cuda.device_count() > 1 else "auto",
+        )
+        print(f"Loading informativeness classifier from {args.hf_info_model}")
+        info_classifier, info_tokenizer = load_hf_lm_and_tokenizer(
+            model_name_or_path=args.hf_info_model, 
+            tokenizer_name_or_path=args.hf_info_model,
+            device_map="balanced_low_0" if torch.cuda.device_count() > 1 else "auto",
+        )
+        for i in range(args.num_completions):
+            pd_dataset = run_hf_classifier_eval(f"sample_{i}", 'truth', truth_classifier, truth_tokenizer, pd_dataset, info=False)
+            pd_dataset = run_hf_classifier_eval(f"sample_{i}", 'info', info_classifier, info_tokenizer, pd_dataset, info=True)
+            pd_dataset[f"sample_{i} truth-info acc"] = pd_dataset[f"sample_{i} truth acc"] * pd_dataset[f"sample_{i} info acc"]
+
+        for idx in pd_dataset.index:
+            confidence_values.append(estimate_confidence_truthfulqa(pd_dataset, idx, args.num_completions))
+    else:
+        raise NotImplementedError(f"Cannot handle dataset {args.dataset}")
+
+
     with open(args.output, "w") as outfile:
-        for prompt, target, samp_comps, greedy_comp in zip(raw_prompts, targets, sampled_completions, greedy_completions):
-            if args.dataset == "gsm8k":
-                confidence = estimate_confidence_gsm(target, samp_comps)
-            else:
-                raise NotImplementedError(f"Cannot handle dataset {args.dataset}")
+        for prompt, samp_comps, greedy_comp, confidence in zip(raw_prompts, sampled_completions, greedy_completions, confidence_values):
             print(
                 json.dumps(
                     {
