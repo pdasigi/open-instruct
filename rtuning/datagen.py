@@ -67,8 +67,8 @@ def main():
     parser.add_argument("--temperature", type=float, default=0.2)
     parser.add_argument("--use_chat_format", action="store_true")
     parser.add_argument("--num_completions", type=int, default=5)
-    parser.add_argument("--hf_truth_model", typ=str, default="allenai/truthfulqa-truth-judge-llama2-7B")
-    parser.add_argument("--hf_info_model", typ=str, default="allenai/truthfulqa-info-judge-llama2-7B")
+    parser.add_argument("--hf_truth_model", type=str, default="allenai/truthfulqa-truth-judge-llama2-7B")
+    parser.add_argument("--hf_info_model", type=str, default="allenai/truthfulqa-info-judge-llama2-7B")
     parser.add_argument("--output", type=str, required=True)
     args = parser.parse_args()
 
@@ -136,28 +136,34 @@ def main():
             confidence_values.append(estimate_confidence_gsm(target, samp_comps))
 
     elif args.dataset == "truthful_qa":
+        # Saving memory
+        del model
         # Need to create a pandas dataframe for evaluating truthfulness and informativeness
         pd_dataset = pd.DataFrame(dataset)
-        pd_dataset.rename(columns={"question": "Question"})
+        pd_dataset = pd_dataset.rename(columns={"question": "Question"})
         for idx, completions in  zip(pd_dataset.index, sampled_completions):
             for i, completion in enumerate(completions):
                 pd_dataset.loc[idx, f"sample_{i}"] = completion 
 
         print(f"Loading truth classifier from {args.hf_truth_model}")
-        truth_classifier, truth_tokenizer = load_hf_lm_and_tokenizer(
+        classifier, tokenizer = load_hf_lm_and_tokenizer(
             model_name_or_path=args.hf_truth_model, 
             tokenizer_name_or_path=args.hf_truth_model,
             device_map="balanced_low_0" if torch.cuda.device_count() > 1 else "auto",
         )
+        print(f"Classifying truthfulness")
+        for i in range(args.num_completions):
+            pd_dataset = run_hf_classifier_eval(f"sample_{i}", 'truth', classifier, tokenizer, pd_dataset, info=False)
+
         print(f"Loading informativeness classifier from {args.hf_info_model}")
-        info_classifier, info_tokenizer = load_hf_lm_and_tokenizer(
+        classifier, tokenizer = load_hf_lm_and_tokenizer(
             model_name_or_path=args.hf_info_model, 
             tokenizer_name_or_path=args.hf_info_model,
             device_map="balanced_low_0" if torch.cuda.device_count() > 1 else "auto",
         )
+        print(f"Classifying informativeness")
         for i in range(args.num_completions):
-            pd_dataset = run_hf_classifier_eval(f"sample_{i}", 'truth', truth_classifier, truth_tokenizer, pd_dataset, info=False)
-            pd_dataset = run_hf_classifier_eval(f"sample_{i}", 'info', info_classifier, info_tokenizer, pd_dataset, info=True)
+            pd_dataset = run_hf_classifier_eval(f"sample_{i}", 'info', classifier, tokenizer, pd_dataset, info=True)
             pd_dataset[f"sample_{i} truth-info acc"] = pd_dataset[f"sample_{i} truth acc"] * pd_dataset[f"sample_{i} info acc"]
 
         for idx in pd_dataset.index:
