@@ -10,6 +10,7 @@ import os
 import sys
 sys.path.insert(0, os.path.abspath(os.pardir))
 from eval.truthfulqa.utilities import format_prompt
+from eval.truthfulqa.metrics import run_hf_classifier_eval
 
 
 exact_match = evaluate.load("exact_match")
@@ -44,8 +45,9 @@ def estimate_confidence_gsm(target, completions):
             predictions.append(numbers[-1])
         else:
             predictions.append(output)
-    targets = [target] * len(predictions)
-    em_score = exact_match.compute(predictions=predictions, references=targets, ignore_case=True, ignore_punctuation=True)["exact_match"]
+    target_number = re.sub(r"(\d),(\d)", r"\1\2", target.split("####")[1].strip())
+    references = [target_number] * len(predictions)
+    em_score = exact_match.compute(predictions=predictions, references=references, ignore_case=True, ignore_punctuation=True)["exact_match"]
     return em_score
 
 
