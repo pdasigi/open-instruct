@@ -88,7 +88,7 @@ def main():
     parser.add_argument("--output_dir", type=str, required=True)
     args = parser.parse_args()
 
-    prompt_prefix = "Answer the following question and say how confident you are.\n\nQuestion: " if args.use_chat_format else "Question: "
+    prompt_prefix = "Answer the following question and say how confident you are.\n\nQuestion: "
     prompt_suffix = " Answer:"
     if args.data_subset == "dev":
         dataset = load_dataset("gsm8k", "main", split="train")
