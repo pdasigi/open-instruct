@@ -1,4 +1,5 @@
 import re
+import os
 import json
 import argparse
 from collections import defaultdict
@@ -84,7 +85,7 @@ def main():
     parser.add_argument("--model", type=str, required=True)
     parser.add_argument("--data_subset", type=str, default="dev", choices=["dev", "test"], help="Dev is the last 1000 instances of official train.")
     parser.add_argument("--temperature", type=float, default=0.0)
-    parser.add_argument("--output", type=str, required=True)
+    parser.add_argument("--output_dir", type=str, required=True)
     args = parser.parse_args()
 
     prompt_prefix = "Answer the following question and say how confident you are.\n\nQuestion: " if args.use_chat_format else "Question: "
@@ -120,9 +121,16 @@ def main():
     )
     outputs = model.generate(prompts, sampling_params)
     completions = [it.outputs[0].text for it in outputs]
-    metrics = compute_metrics(completions, targets)
 
-    with open(args.output, "w") as outfile:
+    with open(os.path.join(args.output_dir, "completions.jsonl"), "w") as outfile:
+        for prompt, completion in zip(raw_prompts, completions):
+            print(
+                json.dumps({"prompt": prompt, "completion": completion}),
+                file=outfile
+            )
+
+    metrics = compute_metrics(completions, targets)    
+    with open(os.path.join(args.output_dir, "metrics.json"), "w") as outfile:
         json.dump(metrics, outfile)
 
 
