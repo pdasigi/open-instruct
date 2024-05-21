@@ -1,0 +1,31 @@
+version: v2
+budget: ai2/oe-adapt
+description: ctuning_gsm8k_tulu2-7b_temp1.0_lora_merge
+tasks:
+  - name: ctuning_gsm8k_tulu2-7b_temp1.0_lora_merge
+    image:
+      beaker: pradeepd/open-instruct-humanif
+    command: [
+      'python', 'open_instruct/merge_lora.py'
+    ]
+    arguments: ['--base_model_name_or_path', '/base_model',
+      '--lora_model_name_or_path', '/output/lora_weights',
+      '--output_dir', '/output/',
+      '--save_tokenizer'
+    ]
+    envVars:
+      - name: CUDA_DEVICE_ORDER
+        value: PCI_BUS_ID
+      - name: TRANSFORMERS_CACHE
+        value: ./cache/
+    datasets:
+      - mountPath: /base_model
+        source:
+          beaker: hamishivi/tulu_v2.1_7b
+    result:
+      path: /output
+    resources:
+      gpuCount: 0
+    context:
+      cluster: ai2/allennlp-cirrascale
+      priority: low

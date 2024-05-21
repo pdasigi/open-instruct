@@ -1,0 +1,69 @@
+version: v2
+budget: ai2/oe-adapt
+description: ctuning_gsm8k_tulu2-7b_temp0.2
+tasks:
+  - name: ctuning_gsm8k_tulu2-7b_temp0.2
+    image:
+      beaker: pradeepd/open-instruct-humanif
+    command: [
+      '/bin/sh', '-c'
+    ]
+    arguments: ['accelerate launch
+      --mixed_precision bf16
+      --num_machines 1
+      --num_processes 4
+      --use_deepspeed
+      --deepspeed_config_file ds_configs/stage3_no_offloading_accelerate.conf
+      open_instruct/finetune.py
+      --model_name_or_path /model
+      --use_flash_attn
+      --tokenizer_name /model
+      --use_slow_tokenizer
+      --train_file /data/gsm8k_tulu2-7b_temp0.2_train.jsonl
+      --max_seq_length 2048
+      --preprocessing_num_workers 16
+      --per_device_train_batch_size 2
+      --gradient_accumulation_steps 32
+      --learning_rate 2e-5
+      --lr_scheduler_type linear
+      --warmup_ratio 0.03
+      --weight_decay 0.
+      --num_train_epochs 2
+      --output_dir /output/
+      --with_tracking
+      --report_to wandb
+      --logging_steps 1
+    ']
+    envVars:
+      - name: CUDA_DEVICE_ORDER
+        value: PCI_BUS_ID
+      - name: TRANSFORMERS_CACHE
+        value: ./cache/
+      - name: WANDB_PROJECT
+        value: tulu-calibration
+      - name: WANDB_WATCH
+        value: false
+      - name: WANDB_LOG_MODEL
+        value: false
+      - name: WANDB_DISABLED
+        value: false
+      - name: WANDB_NAME
+        value: ctuning_gsm8k_tulu2-7b_temp0.2
+      - name: WANDB_RUN_GROUP
+        value: ctuning
+      - name: WANDB_API_KEY
+        secret: wandb_api_key
+    datasets:
+      - mountPath: /data
+        source:
+          beaker: pradeepd/ctuning_train_data
+      - mountPath: /model
+        source:
+          beaker: hamishivi/tulu_v2.1_7b
+    result:
+      path: /output
+    resources:
+      gpuCount: 2
+    context:
+      cluster: ai2/allennlp-cirrascale
+      priority: low
