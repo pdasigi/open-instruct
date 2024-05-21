@@ -4,6 +4,7 @@ import json
 import argparse
 from collections import defaultdict
 import numpy
+from matplotlib import pyplot as plt
 import torch
 import vllm
 from datasets import load_dataset
@@ -67,17 +68,21 @@ def compute_metrics(completions, targets):
 
     if not bins:
         calibration_error = None
+        calibration_data = None
     else:
         calibration_error = 0.0
+        calibration_data = []
         for binned_conf, bin in bins.items():
-            calibration_error += (len(bin) / num_valid_confidences) * numpy.abs(binned_conf - numpy.mean(bin))
+            accuracy = numpy.mean(bin)
+            calibration_error += (len(bin) / num_valid_confidences) * numpy.abs(binned_conf - accuracy)
+            calibration_data.append(binned_conf, accuracy)
 
     metrics = {
         "exact_match": numpy.mean(em_scores),
         "conf_expr_rate": num_valid_confidences / len(confidence_values),
         "calibration_error": calibration_error
     }
-    return metrics
+    return metrics, calibration_data
 
 
 def main():
@@ -129,9 +134,30 @@ def main():
                 file=outfile
             )
 
-    metrics = compute_metrics(completions, targets)    
+    metrics, calibration_data = compute_metrics(completions, targets)
     with open(os.path.join(args.output_dir, "metrics.json"), "w") as outfile:
         json.dump(metrics, outfile)
+
+    if calibration_data is not None:
+        # Plot calibration data
+        x_data, y_data = zip(*sorted(calibration_data, key=lambda x: x[0]))
+        fig, ax = plt.subplots()
+        ax.plot(x_data, y_data)
+
+        # Make a y=x line.
+        lims = [
+            numpy.min([ax.get_xlim(), ax.get_ylim()]),
+            numpy.max([ax.get_xlim(), ax.get_ylim()])
+        ]
+        ax.plot(lims, lims, 'k-')
+        ax.set_aspect('equal')
+        ax.set_xlim(lims)
+        ax.set_ylim(lims)
+
+        # Axis labels
+        ax.set_xlabel("Predicted confidence")
+        ax.set_ylabel("Accuracy")
+        fig.savefig(os.path.join(args.output_dir, "calibration_plot.png"))
 
 
 if __name__ == "__main__":
