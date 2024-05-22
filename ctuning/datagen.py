@@ -52,7 +52,7 @@ def main():
     parser.add_argument("--num_completions", type=int, default=5)
     parser.add_argument("--hf_truth_model", type=str, default="allenai/truthfulqa-truth-judge-llama2-7B")
     parser.add_argument("--hf_info_model", type=str, default="allenai/truthfulqa-info-judge-llama2-7B")
-    parser.add_argument("--output", type=str, required=True)
+    parser.add_argument("--output_dir", type=str, required=True)
     args = parser.parse_args()
 
     if args.dataset == "gsm8k":
@@ -155,7 +155,7 @@ def main():
         raise NotImplementedError(f"Cannot handle dataset {args.dataset}")
 
 
-    with open(args.output, "w") as outfile:
+    with open(os.path.join(args.output_dir, "completions.jsonl"), "w") as outfile:
         for prompt, samp_comps, greedy_comp, confidence in zip(raw_prompts, sampled_completions, greedy_completions, confidence_values):
             print(
                 json.dumps(
@@ -167,6 +167,25 @@ def main():
                     }),
                 file=outfile
             )
+
+
+    ctuning_dataset_name = f"{args.dataset.split("/")[-1]}_{args.model.split("/")[-1]}_temp{args.temperature}"
+    with open(os.path.join(args.output_dir, f"{ctuning_dataset_name}_train.jsonl"), "w") as outfile:
+        for i, (prompt, greedy_comp, confidence) in enumerate(zip(raw_prompts, greedy_completions, confidence_values)):
+            if args.dataset_name == "gsm8k":
+                prompt = prompt.replace("Answer the following question.", "Answer the following question and say how confident you are.", 1)
+                response = greedy_comp + f"\n<CONF>{confidence}</CONF>"
+            else:
+                raise NotImplementedError
+            output_datum = {
+                "dataset": ctuning_dataset_name,
+                "id": f"{ctuning_dataset_name}_{i}",
+                "messages": [
+                    {"role": "user", "content": prompt},
+                    {"role": "assistant", "content": response}
+                ]
+            }
+            print(json.dumps(output_datum), file=outfile)
 
 
 if __name__ == "__main__":
