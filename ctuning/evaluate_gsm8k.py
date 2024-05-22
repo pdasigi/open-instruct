@@ -75,7 +75,7 @@ def compute_metrics(completions, targets):
         for binned_conf, bin in bins.items():
             accuracy = numpy.mean(bin)
             calibration_error += (len(bin) / num_valid_confidences) * numpy.abs(binned_conf - accuracy)
-            calibration_data.append(binned_conf, accuracy)
+            calibration_data.append((binned_conf, accuracy))
 
     metrics = {
         "exact_match": numpy.mean(em_scores),
@@ -139,6 +139,9 @@ def main():
         json.dump(metrics, outfile)
 
     if calibration_data is not None:
+        with open(os.path.join(args.output_dir, "calibration_data.tsv"), "w") as outfile:
+            for x, y in calibration_data:
+                print(f"{x}\t{y}", file=outfile)
         # Plot calibration data
         x_data, y_data = zip(*sorted(calibration_data, key=lambda x: x[0]))
         fig, ax = plt.subplots()
