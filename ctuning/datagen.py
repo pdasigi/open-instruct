@@ -4,6 +4,7 @@ import argparse
 import torch
 import vllm
 from datasets import load_dataset
+from transformers import AutoTokenizer
 import evaluate
 import pandas as pd
 
@@ -16,24 +17,6 @@ from eval.utils import load_hf_lm_and_tokenizer
 
 
 exact_match = evaluate.load("exact_match")
-
-
-def create_prompt_with_tulu_chat_format(messages, bos="<s>", eos="</s>", add_bos=True):
-    formatted_text = ""
-    for message in messages:
-        if message["role"] == "system":
-            formatted_text += "<|system|>\n" + message["content"] + "\n"
-        elif message["role"] == "user":
-            formatted_text += "<|user|>\n" + message["content"] + "\n"
-        elif message["role"] == "assistant":
-            formatted_text += "<|assistant|>\n" + message["content"].strip() + eos + "\n"
-        else:
-            raise ValueError(
-                "Tulu chat template only supports 'system', 'user' and 'assistant' roles. Invalid role: {}.".format(message["role"])
-                )
-    formatted_text += "<|assistant|>\n"
-    formatted_text = bos + formatted_text if add_bos else formatted_text
-    return formatted_text
 
 
 def estimate_confidence_gsm(target, completions):
@@ -96,11 +79,11 @@ def main():
         raise NotImplementedError(f"Cannot handle dataset {args.dataset}")
 
     if args.use_chat_format:
+        tokenizer = AutoTokenizer.from_pretrained(args.model)
         formatted_prompts = []
         for prompt in raw_prompts:
             messages = [{"role": "user", "content": prompt}]
-            # TODO: Assuming model expects Tulu chat format
-            formatted_prompt = create_prompt_with_tulu_chat_format(messages, add_bos=False)
+            formatted_prompt = tokenizer.apply_chat_template(messages, tokenize=False)
             formatted_prompts.append(formatted_prompt)
         prompts = formatted_prompts
     else:
