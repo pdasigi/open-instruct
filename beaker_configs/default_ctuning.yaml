@@ -53,6 +53,8 @@ tasks:
         value: ctuning
       - name: WANDB_API_KEY
         secret: wandb_api_key
+      - name: HF_TOKEN
+        secret: huggingface_token
     datasets:
       - mountPath: /data
         source:
