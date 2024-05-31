@@ -1,10 +1,12 @@
 import re
 import json
 import argparse
+import warnings
 import torch
 import vllm
 from datasets import load_dataset
 from transformers import AutoTokenizer
+from huggingface_hub import login
 import evaluate
 import pandas as pd
 
@@ -17,6 +19,11 @@ from eval.utils import load_hf_lm_and_tokenizer
 
 
 exact_match = evaluate.load("exact_match")
+HF_TOKEN = os.environ.get('HF_TOKEN')
+if HF_TOKEN is None:
+    warnings.warn("HF_TOKEN is not set. This is needed for gated models.")
+else:
+    login(token=HF_TOKEN)
 
 
 def estimate_confidence_gsm(target, completions):
@@ -169,10 +176,10 @@ def main():
             )
 
 
-    ctuning_dataset_name = f"{args.dataset.split("/")[-1]}_{args.model.split("/")[-1]}_temp{args.temperature}"
+    ctuning_dataset_name = f"{args.dataset.split('/')[-1]}_{args.model.split('/')[-1]}_temp{args.temperature}"
     with open(os.path.join(args.output_dir, f"{ctuning_dataset_name}_train.jsonl"), "w") as outfile:
         for i, (prompt, greedy_comp, confidence) in enumerate(zip(raw_prompts, greedy_completions, confidence_values)):
-            if args.dataset_name == "gsm8k":
+            if args.dataset == "gsm8k":
                 prompt = prompt.replace("Answer the following question.", "Answer the following question and say how confident you are.", 1)
                 response = greedy_comp + f"\n<CONF>{confidence}</CONF>"
             else:

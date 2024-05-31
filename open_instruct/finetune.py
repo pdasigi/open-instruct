@@ -10,6 +10,7 @@ import datasets
 from datetime import timedelta
 import torch
 from functools import partial
+from huggingface_hub import login
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed, InitProcessGroupKwargs
@@ -36,6 +37,11 @@ from transformers import (
 from peft import LoraConfig, TaskType, get_peft_model, prepare_model_for_kbit_training
 
 logger = get_logger(__name__)
+HF_TOKEN = os.environ.get('HF_TOKEN')
+if HF_TOKEN is None:
+    logger.warning("HF_TOKEN is not set. This is needed for gated models.")
+else:
+    login(token=HF_TOKEN)
 
 try:
     from hf_olmo import OLMoTokenizerFast
