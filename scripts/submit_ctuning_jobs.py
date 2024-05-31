@@ -11,7 +11,7 @@ with open("beaker_configs/default_ctuning.yaml", 'r') as f:
 d1 = yaml.load(default_yaml, Loader=yaml.FullLoader)
 
 
-use_lora = True
+use_lora = False
 cluster = "ai2/allennlp-cirrascale"
 num_gpus = 2
 d1['tasks'][0]['context']['cluster'] = cluster
@@ -25,13 +25,15 @@ wandb_project = "tulu-calibration"
 
 # ----------------------- dataset comparison -----------------------
 datasets = [
-    "gsm8k_tulu2-7b_temp0.2",
-    "gsm8k_tulu2-7b_temp0.4",
-    "gsm8k_tulu2-7b_temp0.6",
-    "gsm8k_tulu2-7b_temp0.8",
-    "gsm8k_tulu2-7b_temp1.0",
+    "gsm8k_Mistral-7B-Instruct-v0.2_temp0.2",
+    "gsm8k_Mistral-7B-Instruct-v0.2_temp0.4",
+    "gsm8k_Mistral-7B-Instruct-v0.2_temp0.6",
+    "gsm8k_Mistral-7B-Instruct-v0.2_temp0.8",
+    "gsm8k_Mistral-7B-Instruct-v0.2_temp1.0",
 ]
-model_path = "hamishivi/tulu_v2.1_7b"
+beaker_model_path = None
+hf_model_path = "mistralai/Mistral-7B-Instruct-v0.2"
+assert (hf_model_path is None) != (beaker_model_path is None)
 
 if use_lora:
     with open("beaker_configs/default_merge_lora.yaml", 'r') as f:
@@ -51,7 +53,7 @@ for dataset in datasets:
     if use_lora:
         d['tasks'][0]['arguments'][0] = d['tasks'][0]['arguments'][0].replace(
             "--output_dir /output/",
-            "--output_dit /output/lora_weights/"
+            "--output_dir /output/lora_weights/"
         )
         d['tasks'][0]['arguments'][0] += ' --use_lora --lora_rank 64 --lora_alpha 16 --lora_dropout 0.1'
 
@@ -62,9 +64,18 @@ for dataset in datasets:
     )
 
     # model specific
-    for mount_dataset in d['tasks'][0]['datasets']:
-        if mount_dataset["mountPath"] == "/model":
-            mount_dataset["source"]["beaker"] = model_path
+    if beaker_model_path is not None:
+        mount_dataset = {'mountPath': '/model', 'source': {'beaker': beaker_model_path}}
+        d['tasks'][0]['datasets'].append(mount_dataset)
+    elif hf_model_path is not None:
+        d['tasks'][0]['arguments'][0] = d['tasks'][0]['arguments'][0].replace(
+            "--tokenizer_name /model",
+            f"--tokenizer_name {hf_model_path}"
+        ).replace(
+            "--model_name_or_path /model",
+            f"--model_name_or_path {hf_model_path}"
+        )
+
     d['tasks'][0]['arguments'][0] = d['tasks'][0]['arguments'][0].replace(
         "--gradient_accumulation_steps 32",
         f"--gradient_accumulation_steps {128 // 2 // num_gpus}"
@@ -93,9 +104,11 @@ for dataset in datasets:
     if use_lora:
         lora_d = copy.deepcopy(d2)['tasks'][0]
         lora_d['name'] = f"{exp_name}_lora_merge"
-        for mount_dataset in lora_d['datasets']:
-            if mount_dataset["mountPath"] == "/base_model":
-                mount_dataset["source"]["beaker"] = model_path
+        if beaker_model_path is not None:
+            mount_dataset = {'mountPath': '/base_model', 'source': {'beaker': beaker_model_path}}
+            lora_d['datasets'] = [mount_dataset]
+        elif hf_model_path is not None:
+            lora_d["arguments"] = [hf_model_path if argument == "/base_model" else argument for argument in lora_d["arguments"]]
 
         d['tasks'].append(lora_d)
 

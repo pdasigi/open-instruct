@@ -59,9 +59,6 @@ tasks:
       - mountPath: /data
         source:
           beaker: pradeepd/ctuning_train_data
-      - mountPath: /model
-        source:
-          beaker: hamishivi/tulu_v2.1_7b
     result:
       path: /output
     resources:

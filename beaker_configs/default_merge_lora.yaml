@@ -18,10 +18,6 @@ tasks:
         value: PCI_BUS_ID
       - name: TRANSFORMERS_CACHE
         value: ./cache/
-    datasets:
-      - mountPath: /base_model
-        source:
-          beaker: hamishivi/tulu_v2.1_7b
     result:
       path: /output
     resources:
