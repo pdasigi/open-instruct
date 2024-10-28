@@ -247,7 +247,7 @@ def main():
         ("allenai/wildjailbreak", "eval", "train", ["adversarial"], None),
         ("allenai/tulu-3-trustllm-jailbreaktrigger-eval", None, "test", ["prompt"], None),
         ("allenai/tulu-3-harmbench-eval", None, "test", ["Behavior"], None),
-        ("allenai/tulu-3-do-anything-now-eval", None, "test", ["prompt"], None)
+        ("allenai/tulu-3-do-anything-now-eval", None, "test", ["prompt"], None),
         # Test evals
         ("TIGER-Lab/MMLU-Pro", None, "test", ["question"], None),
         ("Idavidrein/gpqa", "gpqa_extended", "train", ["Question"], None),
